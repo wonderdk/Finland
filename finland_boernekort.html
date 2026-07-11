@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vores Finland-eventyr</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --sky:#8ECAE6; --sun:#FFB703; --grass:#5FA95F; --berry:#E63946;
+    --night:#023047; --paper:#FFF9EC;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{font-family:'Baloo 2',system-ui,sans-serif;background:var(--paper);color:var(--night);
+       display:flex;flex-direction:column;overflow:hidden}
+  header{background:var(--night);color:#fff;padding:10px 16px;text-align:center}
+  header h1{font-weight:800;font-size:clamp(1.15rem,4vw,1.7rem);letter-spacing:.3px}
+  header h1 .s{color:var(--sun)}
+  #map{flex:1;min-height:0}
+  .hud{background:#fff;border-top:4px solid var(--sun);padding:10px 12px 14px;display:flex;
+       flex-direction:column;gap:8px}
+  .row{display:flex;align-items:center;justify-content:center;gap:10px}
+  button{font-family:'Baloo 2',sans-serif;font-weight:800;border:none;border-radius:16px;
+         cursor:pointer;transition:transform .1s}
+  button:active{transform:scale(.94)}
+  .step{background:var(--sky);color:var(--night);font-size:1.15rem;padding:12px 18px;min-width:64px;min-height:52px}
+  .go{background:var(--berry);color:#fff;font-size:1.25rem;padding:12px 22px;min-height:52px;
+      box-shadow:0 3px 0 #b02a35}
+  .daybox{background:var(--sun);border-radius:16px;padding:8px 18px;font-size:1.2rem;font-weight:800;
+          min-width:150px;text-align:center;white-space:nowrap}
+  .spots{display:flex;justify-content:center;gap:6px;flex-wrap:wrap}
+  .spots .lbl{width:100%;text-align:center;font-size:.8rem;font-weight:700;opacity:.7}
+  .badge{font-size:1.5rem;background:#F1EADB;border-radius:14px;padding:6px 10px;position:relative;
+         border:2px solid transparent;min-width:52px;min-height:48px}
+  .badge.done{background:#DDF3DC;border-color:var(--grass)}
+  .badge.done::after{content:"✔";position:absolute;top:-8px;right:-6px;background:var(--grass);
+         color:#fff;border-radius:50%;width:20px;height:20px;font-size:.8rem;line-height:20px;text-align:center}
+  .camper-icon{font-size:26px;filter:drop-shadow(0 2px 2px rgba(0,0,0,.35));transform:translate(-3px,-6px)}
+  .dot{background:#fff;border:3px solid var(--berry);border-radius:50%;width:16px;height:16px;opacity:.9}
+  .dot.seen{background:var(--berry)}
+  .kidpop .leaflet-popup-content-wrapper{border-radius:18px;background:var(--paper)}
+  .kidpop .leaflet-popup-content{font-family:'Baloo 2',sans-serif;margin:12px 14px;font-size:1rem;line-height:1.35}
+  .kidpop .big{font-size:2.2rem;text-align:center}
+  .kidpop b{font-size:1.15rem;color:var(--berry)}
+  .kidpop img{width:100%;border-radius:12px;margin-top:6px}
+  .arctic-label{font:800 .75rem 'Baloo 2',sans-serif;color:var(--night);background:rgba(255,249,236,.9);
+                padding:3px 8px;border-radius:10px;white-space:nowrap;border:2px dashed var(--sky)}
+  .confetti{position:fixed;font-size:1.6rem;animation:fall 2.4s ease-in forwards;pointer-events:none;z-index:9999}
+  @keyframes fall{from{transform:translateY(-10vh) rotate(0)}to{transform:translateY(105vh) rotate(340deg);opacity:.2}}
+</style>
+</head>
+<body>
+<header><h1>🚐 Vores <span class="s">Finland</span>-eventyr ☀️</h1></header>
+<div id="map"></div>
+<div class="hud">
+  <div class="row">
+    <button class="step" id="prev">◀</button>
+    <div class="daybox" id="daybox">Tryk KØR!</div>
+    <button class="step" id="next">▶</button>
+    <button class="go" id="go">KØR! 🚐</button>
+  </div>
+  <div class="spots" id="spots">
+    <div class="lbl">Kig efter undervejs - tryk når I ser den!</div>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+// Hele ruten som ÉN sti. Camperen kører altid langs denne linje.
+const PATH = [
+ [60.1852,24.9505], // 0  Kallio (dag 1)
+ [60.1454,24.9881], // 1  Suomenlinna (dag 2)
+ [60.1852,24.9505], // 2  Kallio retur
+ [60.395,25.66],    // 3  Porvoo (dag 3)
+ [61.583,26.633],   // 4  Repovesi (dag 4)
+ [61.868,28.902],   // 5  Savonlinna (dag 5)
+ [61.976,28.633],   // 6  Oravi (her sover vi)
+ [63.097,29.806],   // 7  Koli (dag 6)
+ [64.229,27.733],   // 8  Kajaani
+ [65.443,29.551],   // 9  Hossa (dag 7)
+ [65.47,29.60],     // 10 Julma-Olkky (dag 8)
+ [65.443,29.551],   // 11 Hossa retur
+ [65.030,25.411],   // 12 Oulu (dag 9)
+ [65.943,26.467],   // 13 Ranua (dag 10)
+ [66.5036,25.7294], // 14 Julemandens landsby (dag 11)
+ [66.5076,25.7261], // 15 Rovaniemi (dag 12)
+ [67.415,26.597],   // 16 Sodankyla
+ [68.4246,27.4476], // 17 Kiilopaa (dag 13)
+ [68.906,27.027],   // 18 Inari (dag 14) - vendepunkt
+ [68.17,27.10],     // 19 Tankavaara (dag 15)
+ [67.153,26.917],   // 20 Luosto
+ [67.138,26.920],   // 21 Ametystminen (dag 16)
+ [66.50,25.73],     // 22 forbi Rovaniemi
+ [65.02,25.47],     // 23 forbi Oulu
+ [62.24,25.75],     // 24 Jyvaskyla
+ [62.11,25.66],     // 25 Muurame (dag 17)
+ [61.493,23.767],   // 26 Tampere
+ [60.4676,22.0102], // 27 Naantali (dag 18)
+ [60.317,24.963]    // 28 Lufthavnen (dag 19)
+];
+
+const DAYS = [
+ {d:1, at:0,  t:"Vi flyver til Finland!", wiki:"Helsinki", e:"🛫",
+  txt:"Op i flyveren og af sted! Vi skal bo i Helsinki, hvor der er en legeplads lige rundt om hjørnet."},
+ {d:2, at:1,  t:"Ø-fæstning og forlystelser!", wiki:"Suomenlinna", e:"🏰",
+  txt:"Vi sejler ud til en kæmpe fæstning med hemmelige tunneler - og om aftenen skal vi i FORLYSTELSESPARK!"},
+ {d:3, at:3,  t:"Vi henter vores camper!", wiki:"Porvoo", e:"🚐",
+  txt:"I dag får vi vores rullende hus! Vi stopper i en by med chokoladefabrik. Mums."},
+ {d:4, at:4,  t:"Gyngende hængebro!", wiki:"Repovesi National Park", e:"🌉",
+  txt:"Tør I gå over hængebroen højt over vandet? Bagefter kører vi til en lille landsby ved en kæmpe sø."},
+ {d:5, at:5,  t:"RIGTIG ridderborg!", wiki:"Olavinlinna", e:"⚔️",
+  txt:"En ægte borg på en ø, over 500 år gammel! Bagefter bader vi fra en lang skovklædt sandryg."},
+ {d:6, at:7,  t:"Kano og bjergtop!", wiki:"Koli National Park", e:"🛶",
+  txt:"Først padler vi kano på søen. Om aftenen går vi op på et bjerg med Finlands flotteste udsigt!"},
+ {d:7, at:9,  t:"Lang køredag - til vildmarken!", wiki:"Hossa National Park", e:"🌲",
+  txt:"I dag kører vi laaangt mod nord. Vi ender i en rigtig vildmark, hvor vi bor lige ved en badestrand."},
+ {d:8, at:10, t:"Kløftsø og stenaldermalerier!", wiki:"Julma-Ölkky", e:"🎨",
+  txt:"En sø klemt inde mellem to kæmpe klippevægge - og malerier, som stenalderfolk lavede for 4.000 år siden!"},
+ {d:9, at:12, t:"Stranddag!", wiki:"Oulu", e:"🏖️",
+  txt:"Kæmpe sandstrand ved havet. Byg sandslotte, bad og slap af!"},
+ {d:10,at:13, t:"ISBJØRNE!", wiki:"Ranua Zoo", e:"🐻‍❄️",
+  txt:"En zoo kun med dyr fra Nordens kolde egne: isbjørne, losser, jærve og elge!"},
+ {d:11,at:14, t:"Vi besøger JULEMANDEN!", wiki:"Santa Claus Village", e:"🎅",
+  txt:"Vi krydser Polarcirklen - selveste stregen på jorden! - og møder julemanden og hans rensdyr. Midt om sommeren!"},
+ {d:12,at:15, t:"Museum og bjergtur", wiki:"Rovaniemi", e:"🏛️",
+  txt:"Et museum om Nordpolen og alt det arktiske - og en gåtur op på fjeldet lige ved byen."},
+ {d:13,at:17, t:"Fjeldtur i MIDNATSSOL!", wiki:"Saariselkä", e:"⛰️",
+  txt:"Heroppe går solen ALDRIG ned! Vi går op på et fjeld om aftenen, og det er stadig helt lyst. Bagefter: røgsauna og dyp i en iskold å - hvis I tør!"},
+ {d:14,at:18, t:"Længst mod nord!", wiki:"Inari, Finland", e:"🦌",
+  txt:"Vores nordligste nat, ved en sø så stor som et hav. Her bor samerne, og vi lærer om deres rensdyr."},
+ {d:15,at:19, t:"Vi vasker GULD!", wiki:"Tankavaara", e:"⛏️",
+  txt:"Nu vender vi camperen sydpå - og stopper for at vaske ægte guld i en balje. Det, I finder, må I BEHOLDE!"},
+ {d:16,at:21, t:"Vi graver ÆDELSTEN!", wiki:"Pyhä-Luosto National Park", e:"💎",
+  txt:"Vi vandrer op til en rigtig mine og graver vores egen lilla ametyst. Bagefter: svømmepøl!"},
+ {d:17,at:25, t:"Racerbiler i byen!", wiki:"Rally Finland", e:"🏎️",
+  txt:"Lang køredag - men vi ender i en by fuld af VM-rallybiler! Måske ser vi den store åbningsparade."},
+ {d:18,at:27, t:"MUMINVERDENEN!!!", wiki:"Moomin World", e:"🌈",
+  txt:"Dagen I har ventet på! En hel eftermiddag i Mumindalen - mød Mumitrolden, Lille My og alle de andre!"},
+ {d:19,at:28, t:"Hjem med kufferten fuld af historier", wiki:"Helsinki Airport", e:"🏠",
+  txt:"Vi afleverer camperen og flyver hjem. Hvor mange rensdyr nåede I at tælle?"}
+];
+const SPOTS = [["🦌","rensdyr"],["🫎","elg"],["🐻‍❄️","isbjørn"],["💎","ametyst"],["🥇","guld"],["🌞","midnatssol"],["🧖","sauna"],["🐿️","egern"]];
+
+const map = L.map('map',{zoomControl:false}).setView([64.8,26.3],5);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  {attribution:'&copy; OpenStreetMap-bidragydere', maxZoom:18}).addTo(map);
+
+const TURN = 18; // Inari - her skifter linjen farve
+L.polyline(PATH.slice(0,TURN+1),{color:'#FFB703',weight:5,opacity:.95}).addTo(map);
+L.polyline(PATH.slice(TURN),{color:'#8ECAE6',weight:5,opacity:.95}).addTo(map);
+L.polyline([[66.5637,22.5],[66.5637,30.8]],{color:'#023047',weight:2,dashArray:'8 8',opacity:.7}).addTo(map);
+L.marker([66.5637,29.7],{icon:L.divIcon({className:'',html:'<span class="arctic-label">⭐ Polarcirklen - her begynder julemandens land!</span>',iconSize:[260,22]})}).addTo(map);
+
+// Afstande langs stien, så camperen kan køre med jævn fart
+function dist(a,b){
+  const kx = 111.32*Math.cos((a[0]+b[0])*Math.PI/360), ky = 110.57;
+  const dx = (a[1]-b[1])*kx, dy = (a[0]-b[0])*ky;
+  return Math.hypot(dx,dy);
+}
+const CUM = [0];
+for(let i=1;i<PATH.length;i++) CUM.push(CUM[i-1]+dist(PATH[i-1],PATH[i]));
+function pointAt(s){
+  if(s<=0) return PATH[0];
+  if(s>=CUM[CUM.length-1]) return PATH[PATH.length-1];
+  let i=1; while(CUM[i]<s) i++;
+  const k=(s-CUM[i-1])/(CUM[i]-CUM[i-1]);
+  const a=PATH[i-1], b=PATH[i];
+  return [a[0]+(b[0]-a[0])*k, a[1]+(b[1]-a[1])*k];
+}
+
+const dots = DAYS.map(s=> L.marker(PATH[s.at],{icon:L.divIcon({className:'',html:'<div class="dot"></div>',iconSize:[16,16],iconAnchor:[8,8]})}).addTo(map));
+const camper = L.marker(PATH[0],{icon:L.divIcon({className:'',html:'<div class="camper-icon">🚐</div>',iconSize:[26,26],iconAnchor:[13,13]}), zIndexOffset:1000}).addTo(map);
+const thumbs = {};
+DAYS.forEach((s,i)=>{
+  fetch('https://en.wikipedia.org/api/rest_v1/page/summary/'+encodeURIComponent(s.wiki))
+    .then(r=>r.ok?r.json():null)
+    .then(j=>{ if(j && j.thumbnail) thumbs[i]=j.thumbnail.source; }).catch(()=>{});
+});
+
+let cur = -1, moving = false;
+const daybox = document.getElementById('daybox');
+
+function popupFor(i){
+  const s = DAYS[i];
+  const img = thumbs[i] ? `<img src="${thumbs[i]}" alt="">` : "";
+  return `<div class="big">${s.e}</div><b>Dag ${s.d}: ${s.t}</b><br>${s.txt}${img}`;
+}
+function markSeen(i){
+  dots.forEach((d,j)=>{ const el=d.getElement(); if(el) el.querySelector('.dot').classList.toggle('seen', j<=i); });
+}
+function drive(fromIdx, toIdx, done){
+  const s0 = CUM[DAYS[fromIdx].at], s1 = CUM[DAYS[toIdx].at];
+  const km = Math.abs(s1-s0);
+  const T = Math.min(2600, Math.max(900, km*4)); // jævn fart, 0,9-2,6 sek.
+  const dest = PATH[DAYS[toIdx].at];
+  map.flyTo(dest, dest[0]>65?6.5:7, {duration:T/1000});
+  moving = true;
+  const t0 = performance.now();
+  (function anim(t){
+    const k = Math.min(1,(t-t0)/T);
+    camper.setLatLng(pointAt(s0+(s1-s0)*k));
+    if(k<1) requestAnimationFrame(anim);
+    else { moving=false; done(); }
+  })(t0);
+}
+function showDay(i, fromIdx){
+  const s = DAYS[i];
+  daybox.textContent = `Dag ${s.d} ${s.e}`;
+  markSeen(i);
+  const open = ()=>{
+    camper.bindPopup(popupFor(i), {className:'kidpop', maxWidth:270}).openPopup();
+    if(s.d===18) confetti();
+  };
+  if(fromIdx!=null) drive(fromIdx, i, open);
+  else {
+    camper.setLatLng(PATH[s.at]);
+    map.flyTo(PATH[s.at], PATH[s.at][0]>65?6.5:7, {duration:.8});
+    setTimeout(open, 850);
+  }
+}
+function step(dir){
+  if(moving) return;
+  if(cur<0){ cur=0; showDay(0, null); return; }
+  const nxt = Math.min(DAYS.length-1, Math.max(0, cur+dir));
+  if(nxt===cur) return;
+  const from = cur; cur = nxt;
+  showDay(cur, from);
+}
+document.getElementById('go').addEventListener('click', ()=> step(1));
+document.getElementById('next').addEventListener('click', ()=> step(1));
+document.getElementById('prev').addEventListener('click', ()=> step(-1));
+
+function confetti(){
+  const em = ["🌈","🎉","⭐","🎈","💙"];
+  for(let i=0;i<24;i++){
+    const s=document.createElement('span');
+    s.className='confetti'; s.textContent=em[i%em.length];
+    s.style.left=(Math.random()*100)+'vw';
+    s.style.animationDelay=(Math.random()*0.8)+'s';
+    document.body.appendChild(s);
+    setTimeout(()=>s.remove(), 3400);
+  }
+}
+const spotsEl = document.getElementById('spots');
+SPOTS.forEach(([e,name])=>{
+  const b=document.createElement('button');
+  b.className='badge'; b.textContent=e; b.title=name; b.setAttribute('aria-label','Set: '+name);
+  b.addEventListener('click', ()=> b.classList.toggle('done'));
+  spotsEl.appendChild(b);
+});
+</script>
+</body>
+</html>

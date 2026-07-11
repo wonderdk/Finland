@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Finland 2026 - vores camperrute</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --pine:#1E3A2F; --lake:#2E6E8E; --sun:#F5C453; --berry:#C6414C;
+    --paper:#FAF7F0; --ink:#22302B;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter',system-ui,sans-serif;background:var(--paper);color:var(--ink)}
+  header{background:var(--pine);color:var(--paper);padding:18px 22px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+  header h1{font-family:'Fraunces',serif;font-weight:700;font-size:clamp(1.3rem,3.5vw,1.9rem);letter-spacing:.2px}
+  header .sub{font-size:.85rem;opacity:.85}
+  header .sun-dot{display:inline-block;width:.9em;height:.9em;border-radius:50%;background:var(--sun);margin-right:8px;vertical-align:-.08em}
+  .legend{margin-left:auto;font-size:.75rem;display:flex;gap:14px;align-items:center;opacity:.9}
+  .legend i{display:inline-block;width:22px;height:4px;border-radius:2px;margin-right:5px;vertical-align:middle}
+  .app{display:grid;grid-template-columns:400px 1fr;height:calc(100vh - 64px)}
+  #map{height:100%}
+  aside{overflow-y:auto;border-right:1px solid #E4DED2;background:var(--paper);padding:14px}
+  .card{display:grid;grid-template-columns:88px 1fr;gap:12px;background:#fff;border:1px solid #E9E3D6;
+        border-radius:10px;padding:10px;margin-bottom:10px;cursor:pointer;transition:border-color .15s, transform .15s}
+  .card:hover,.card.active{border-color:var(--berry);transform:translateX(2px)}
+  .card .thumb{width:88px;height:88px;border-radius:8px;background:#EEE8DA;object-fit:cover;
+               display:flex;align-items:center;justify-content:center;font-size:2rem;overflow:hidden}
+  .card img.thumb{display:block}
+  .card .day{font-family:'Fraunces',serif;font-weight:700;color:var(--berry);font-size:.8rem;letter-spacing:.06em;text-transform:uppercase}
+  .card h3{font-family:'Fraunces',serif;font-weight:500;font-size:1.05rem;margin:2px 0 4px}
+  .card p{font-size:.8rem;line-height:1.4;color:#4A554F}
+  .marker-pin{background:var(--berry);color:#fff;border-radius:50%;width:30px;height:30px;
+              display:flex;align-items:center;justify-content:center;font:600 .72rem 'Inter',sans-serif;
+              border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);white-space:nowrap}
+  .marker-pin.north{background:var(--lake)}
+  .leaflet-popup-content{font-family:'Inter',sans-serif;font-size:.85rem}
+  .leaflet-popup-content b{font-family:'Fraunces',serif;font-size:1rem}
+  .leaflet-popup-content img{width:100%;border-radius:6px;margin-top:6px}
+  .arctic-label{font:600 .7rem 'Inter',sans-serif;color:var(--lake);background:rgba(250,247,240,.85);
+                padding:2px 6px;border-radius:4px;white-space:nowrap}
+  @media (max-width:820px){
+    .app{grid-template-columns:1fr;grid-template-rows:52vh 1fr;height:calc(100vh - 92px)}
+    aside{border-right:none;border-top:1px solid #E4DED2;order:2}
+    #map{order:1}
+    .legend{width:100%;margin-left:0}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="sun-dot"></span>Finland i midnatssol</h1>
+  <div class="sub">Familietur i autocamper &middot; 13.-31. juli 2026 &middot; ca. 3.300 km</div>
+  <div class="legend">
+    <span><i style="background:var(--sun)"></i>Nordpå</span>
+    <span><i style="background:var(--lake)"></i>Hjemad</span>
+  </div>
+</header>
+<div class="app">
+<aside id="cards"></aside>
+<div id="map"></div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+const DAYS = [
+ {d:"Dag 1 · 13/7", t:"Helsinki, Kallio", ll:[60.1852,24.9505], wiki:"Helsinki", e:"🛬",
+  txt:"Vi flyver ind og indtager lejligheden i Kallio. Aftensmad i markedshallen og legeplads rundt om hjørnet."},
+ {d:"Dag 2 · 14/7", t:"Suomenlinna + Linnanmäki", ll:[60.1454,24.9881], wiki:"Suomenlinna", e:"⛴️",
+  txt:"Madpakke på søfæstningen om formiddagen, forlystelser i Linnanmäki om aftenen."},
+ {d:"Dag 3 · 15/7", t:"Camper! · Porvoo · Repovesi", ll:[60.395,25.66], wiki:"Porvoo", e:"🚐",
+  txt:"Vi henter autocamperen! Gammel træby og chokolade i Porvoo, første nat ved Repovesi Nationalpark."},
+ {d:"Dag 4 · 16/7", t:"Repovesi → Saimaa-søerne", ll:[61.583,26.633], wiki:"Repovesi National Park", e:"🌉",
+  txt:"Hængebro og skovture, derefter videre til søbyen Oravi."},
+ {d:"Dag 5 · 17/7", t:"Olavinlinna + Punkaharju", ll:[61.868,28.902], wiki:"Olavinlinna", e:"🏰",
+  txt:"Middelalderborg på en ø i Savonlinna og badetur ved den berømte Punkaharju-ås."},
+ {d:"Dag 6 · 18/7", t:"Sø-morgen → Koli-toppen", ll:[63.097,29.806], wiki:"Koli National Park", e:"🛶",
+  txt:"Kano på Saimaa, så kørsel til Koli og gåtur til Finlands mest ikoniske udsigt i aftenlyset."},
+ {d:"Dag 7 · 19/7", t:"Nordpå til Hossa", ll:[65.443,29.551], wiki:"Hossa National Park", e:"🌲",
+  txt:"Borgruin-stop i Kajaani, ankomst til vildmarken i Hossa Nationalpark."},
+ {d:"Dag 8 · 20/7", t:"Hossa-dag", ll:[65.47,29.60], wiki:"Julma-Ölkky", e:"🎨",
+  txt:"Kløftsøen Julma-Ölkky, ældgamle klippemalerier og badetur ved lejrens strand."},
+ {d:"Dag 9 · 21/7", t:"Oulu + Nallikari-stranden", ll:[65.030,25.411], wiki:"Oulu", e:"🏖️",
+  txt:"Kørsel til kysten og strandaften ved den store sandstrand Nallikari."},
+ {d:"Dag 10 · 22/7", t:"Ranua dyrepark → Rovaniemi", ll:[65.943,26.467], wiki:"Ranua Zoo", e:"🐻‍❄️",
+  txt:"Isbjørne, losser og elge i den arktiske zoo, derefter op til Rovaniemi."},
+ {d:"Dag 11 · 23/7", t:"Julemanden + rensdyr", ll:[66.5036,25.7294], wiki:"Santa Claus Village", e:"🎅",
+  txt:"Vi krydser Polarcirklen i Julemandens landsby og møder rensdyr på Porovaara-farmen."},
+ {d:"Dag 12 · 24/7", t:"Rovaniemi-dag", ll:[66.5076,25.7261], wiki:"Rovaniemi", e:"🏛️",
+  txt:"Arktikum-museet og gåtur på Ounasvaara-fjeldet. Proviant til Lapland."},
+ {d:"Dag 13 · 25/7", t:"Fjeldtur ved Kiilopää", ll:[68.4246,27.4476], wiki:"Saariselkä", e:"⛰️",
+  txt:"Trækirke-stop i Sodankylä, derefter toprunden ved Kiilopää i midnatssol. Røgsauna bagefter."},
+ {d:"Dag 14 · 26/7", t:"Inari - det høje nord", ll:[68.906,27.027], wiki:"Inari, Finland", e:"🦌",
+  txt:"Samisk kultur på SIIDA-museet ved Inarisøen. Vores nordligste nat."},
+ {d:"Dag 15 · 27/7", t:"Guldvask → Luosto", ll:[67.153,26.917], wiki:"Tankavaara", e:"⛏️",
+  txt:"Vi vender sydpå. Vask ægte guld i Tankavaara på vejen til Luosto-fjeldene."},
+ {d:"Dag 16 · 28/7", t:"Ametystmine + kløft", ll:[67.138,26.920], wiki:"Pyhä-Luosto National Park", e:"💎",
+  txt:"Alle graver deres egen ametyst på Lampivaara, kløftvandring i Isokuru, spa-pool bagefter."},
+ {d:"Dag 17 · 29/7", t:"Den lange kørsel sydpå", ll:[62.11,25.66], wiki:"Rally Finland", e:"🏁",
+  txt:"Transportdag til Muurame - vi ankommer netop som WRC-rallycirkusset rykker ind i Jyväskylä."},
+ {d:"Dag 18 · 30/7", t:"Muminverdenen!", ll:[60.4676,22.0102], wiki:"Moomin World", e:"🌈",
+  txt:"Den, børnene har ventet på: en hel eftermiddag i Mumindalen i Naantali."},
+ {d:"Dag 19 · 31/7", t:"Hjemad", ll:[60.317,24.963], wiki:"Helsinki Airport", e:"🛫",
+  txt:"Rolig morgenkørsel, camperen afleveres, og vi flyver hjem fyldt med historier."}
+];
+
+// Rute: guld på vej nordpå, søblå på vej hjem. Mellempunkter holder linjen på realistiske vejkorridorer.
+const NORTH = [[60.1852,24.9505],[60.395,25.66],[61.583,26.633],[61.868,28.902],[61.976,28.633],
+ [63.097,29.806],[64.229,27.733],[65.443,29.551],[65.030,25.411],[65.943,26.467],[66.5036,25.7294],
+ [67.415,26.597],[68.4246,27.4476],[68.906,27.027]];
+const SOUTH = [[68.906,27.027],[68.17,27.10],[67.153,26.917],[66.50,25.73],[65.02,25.47],
+ [62.24,25.75],[62.11,25.66],[61.493,23.767],[60.4676,22.0102],[60.317,24.963]];
+
+const map = L.map('map',{scrollWheelZoom:true}).setView([64.8,26.5],5);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  {attribution:'&copy; OpenStreetMap-bidragydere', maxZoom:18}).addTo(map);
+
+L.polyline(NORTH,{color:'#F5C453',weight:4,opacity:.95}).addTo(map);
+L.polyline(SOUTH,{color:'#2E6E8E',weight:4,opacity:.9}).addTo(map);
+
+// Polarcirklen
+L.polyline([[66.5637,22.5],[66.5637,30.8]],{color:'#2E6E8E',weight:1.5,dashArray:'6 6',opacity:.8}).addTo(map);
+L.marker([66.5637,29.9],{icon:L.divIcon({className:'',html:'<span class="arctic-label">Polarcirklen 66,56°N</span>',iconSize:[130,18]})}).addTo(map);
+
+const cardsEl = document.getElementById('cards');
+const markers = [];
+
+DAYS.forEach((s,i)=>{
+  const north = s.ll[0] > 66.5637;
+  const pin = L.divIcon({className:'', html:`<div class="marker-pin ${north?'north':''}">${i+1}</div>`, iconSize:[30,30], iconAnchor:[15,15]});
+  const m = L.marker(s.ll,{icon:pin}).addTo(map);
+  m.bindPopup(`<b>${s.t}</b><br><span style="color:#C6414C;font-weight:600">${s.d}</span><br>${s.txt}<div id="pop-img-${i}"></div>`);
+  markers.push(m);
+
+  const card = document.createElement('div');
+  card.className = 'card'; card.id = 'card-'+i;
+  card.innerHTML = `<div class="thumb" id="thumb-${i}">${s.e}</div>
+    <div><div class="day">${s.d}</div><h3>${s.t}</h3><p>${s.txt}</p></div>`;
+  card.onclick = ()=>{ map.flyTo(s.ll, s.ll[0]>65?7:8, {duration:.8}); m.openPopup(); setActive(i); };
+  cardsEl.appendChild(card);
+
+  m.on('click', ()=>{ setActive(i); document.getElementById('card-'+i).scrollIntoView({behavior:'smooth',block:'center'}); });
+
+  // Levende foto fra Wikipedia (hentes når filen åbnes; falder tilbage til emoji-feltet)
+  fetch('https://en.wikipedia.org/api/rest_v1/page/summary/'+encodeURIComponent(s.wiki))
+    .then(r=>r.ok?r.json():null)
+    .then(j=>{
+      const src = j && j.thumbnail && j.thumbnail.source;
+      if(!src) return;
+      const t = document.getElementById('thumb-'+i);
+      t.outerHTML = `<img class="thumb" id="thumb-${i}" src="${src}" alt="${s.t}" loading="lazy">`;
+      const p = document.getElementById('pop-img-'+i);
+      if(p) p.innerHTML = `<img src="${src}" alt="">`;
+    }).catch(()=>{});
+});
+
+function setActive(i){
+  document.querySelectorAll('.card').forEach(c=>c.classList.remove('active'));
+  const el = document.getElementById('card-'+i);
+  if(el) el.classList.add('active');
+}
+</script>
+</body>
+</html>
